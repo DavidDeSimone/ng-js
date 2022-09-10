@@ -1,0 +1,16 @@
+[package]
+name = "ng-js"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+emacs = "0.18.0"
+deno_runtime = "0.76.0"
+tokio = { version = "1.19", features = ["full"] }
+deno_core = "0.150.0"
+v8 = { version = "0.49.0", default-features = false }
