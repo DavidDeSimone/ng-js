@@ -1,102 +1,60 @@
+extern crate deno;
 extern crate emacs;
-extern crate deno_runtime;
-extern crate tokio;
 extern crate v8 as rusty_v8;
+#[macro_use]
+extern crate lazy_static;
 
-use deno_core::error::AnyError;
-use deno_core::FsModuleLoader;
-use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::worker::MainWorker;
-use deno_runtime::worker::WorkerOptions;
-use deno_runtime::BootstrapOptions;
+use deno::deno_core::error::AnyError;
+use deno::deno_core::FsModuleLoader;
+use deno::deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno::deno_runtime::deno_web::BlobStore;
+use deno::deno_runtime::permissions::Permissions;
+use deno::deno_runtime::worker::MainWorker;
+use deno::deno_runtime::worker::WorkerOptions;
+use deno::deno_runtime::BootstrapOptions;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use std::thread;
 
+use std::sync::mpsc;
+
 use emacs::{defun, Env, Result, Value};
 
 emacs::plugin_is_GPL_compatible!();
 
-fn get_error_class_name(e: &AnyError) -> &'static str {
-    deno_runtime::errors::get_error_class_name(e).unwrap_or("Error")
-}  
-
 #[emacs::module(name = "ng-js", defun_prefix = "ng-js", mod_in_name = false)]
 fn ng_js(env: &Env) -> Result<()> {
-    // env.message("Hello, Emacs!")?;
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_io()
-        .enable_time()
-        .worker_threads(2)
-        .max_blocking_threads(32)
-        .build()?;
-
+        let (tx, rx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let _: Result<()> = runtime.block_on(async {
-                let module_loader = Rc::new(FsModuleLoader);
-                let create_web_worker_cb = Arc::new(|_| {
-                  todo!("Web workers are not supported in the example");
-                });
-                let web_worker_event_cb = Arc::new(|_| {
-                  todo!("Web workers are not supported in the example");
-                });
-              
-                let options = WorkerOptions {
-                  bootstrap: BootstrapOptions {
-                    args: vec![],
-                    cpu_count: 1,
-                    debug_flag: false,
-                    enable_testing_features: false,
-                    location: None,
-                    no_color: false,
-                    is_tty: false,
-                    runtime_version: "x".to_string(),
-                    ts_version: "x".to_string(),
-                    unstable: false,
-                    user_agent: "hello_runtime".to_string(),
-                  },
-                  extensions: vec![],
-                  unsafely_ignore_certificate_errors: None,
-                  root_cert_store: None,
-                  seed: None,
-                  source_map_getter: None,
-                  format_js_error_fn: None,
-                  web_worker_preload_module_cb: web_worker_event_cb.clone(),
-                  web_worker_pre_execute_module_cb: web_worker_event_cb,
-                  create_web_worker_cb,
-                  maybe_inspector_server: None,
-                  should_break_on_first_statement: false,
-                  module_loader,
-                  npm_resolver: None,
-                  get_error_class_fn: Some(&get_error_class_name),
-                  origin_storage_dir: None,
-                  blob_store: BlobStore::default(),
-                  broadcast_channel: InMemoryBroadcastChannel::default(),
-                  shared_array_buffer_store: None,
-                  compiled_wasm_module_store: None,
-                  stdio: Default::default(),
-                };
-              
-                let js_path =
-                  Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/test.js");
-                let main_module = deno_core::resolve_path(&js_path.to_string_lossy())?;
-                let permissions = Permissions::allow_all();
-              
-                let mut worker = MainWorker::bootstrap_from_options(
-                  main_module.clone(),
-                  permissions,
-                  options,
-                );
-                worker.execute_main_module(&main_module).await?;
-                worker.run_event_loop(false).await?;
-                Ok(())
+            let result: Result<_> = deno::deno_runtime::tokio_util::run_local(async move {
+                let flags = deno::args::flags_from_vec(vec!["deno".to_owned()])?;
+                let main_module = deno::deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
+                let ps = deno::proc_state::ProcState::build(flags).await?; 
+                let mut worker = deno::worker::create_main_worker(
+                 &ps,
+                    main_module.clone(),
+                    Permissions::from_options(&ps.options.permissions_options())?,
+                    vec![],
+                    Default::default(),
+                )
+                .await?;
+                worker.setup_repl().await?;
+                let mut repl_session = deno::tools::repl::ReplSession::initialize(worker.into_main_worker()).await?;
+                
+                if let Ok(msg) = rx.recv() {
+                    repl_session.evaluate_line_and_get_output(&msg).await.unwrap();
+
+                } else {
+                    println!("ERROR");
+                }
+                Ok(())   
             });
-        }).join();
-   
+        });
+        tx.send("console.log('hello');".to_string()).unwrap();
+        // drop(tx);
+        std::thread::sleep_ms(5000);
 
 
     Ok(())
