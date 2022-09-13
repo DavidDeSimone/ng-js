@@ -24,9 +24,31 @@ use emacs::{defun, Env, Result, Value};
 
 emacs::plugin_is_GPL_compatible!();
 
+lazy_static! {
+    static ref LISP_TO_JS: std::sync::Mutex<Option<std::sync::mpsc::Sender<String>>> = {
+        std::sync::Mutex::new(None)
+    };
+
+    static ref JS_TO_LISP: std::sync::Mutex<Option<std::sync::mpsc::Receiver<String>>> = {
+        std::sync::Mutex::new(None)
+    };
+}
+
 #[emacs::module(name = "ng-js", defun_prefix = "ng-js", mod_in_name = false)]
 fn ng_js(env: &Env) -> Result<()> {
         let (tx, rx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
+        let (jtx, jrx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
+        
+        {
+            let mut chan = LISP_TO_JS.lock().unwrap();
+            *chan = Some(tx.clone());
+        }
+
+        {
+            let mut chan = JS_TO_LISP.lock().unwrap();
+            *chan = Some(jrx);
+        }
+
         std::thread::spawn(move || {
             let result: Result<_> = deno::deno_runtime::tokio_util::run_local(async move {
                 let flags = deno::args::flags_from_vec(vec!["deno".to_owned()])?;
@@ -43,24 +65,35 @@ fn ng_js(env: &Env) -> Result<()> {
                 worker.setup_repl().await?;
                 let mut repl_session = deno::tools::repl::ReplSession::initialize(worker.into_main_worker()).await?;
                 
-                if let Ok(msg) = rx.recv() {
-                    repl_session.evaluate_line_and_get_output(&msg).await.unwrap();
-
-                } else {
-                    println!("ERROR");
+                loop {
+                    if let Ok(msg) = rx.recv() {
+                        let result = repl_session.evaluate_line_and_get_output(&msg).await?;
+                        jtx.send(result.to_string());
+                    } else {
+                        println!("ERROR");
+                    }
                 }
                 Ok(())   
             });
         });
-        tx.send("console.log('hello');".to_string()).unwrap();
-        // drop(tx);
-        std::thread::sleep_ms(5000);
-
-
     Ok(())
 }
 
 #[defun]
-pub fn addx(_: &Env, _left: i64) -> Result<i64> {
-    Ok(25)
+pub fn eval(_: &Env, payload: String) -> Result<String> {
+    let chan = LISP_TO_JS.lock().unwrap();
+    let rechan = JS_TO_LISP.lock().unwrap();
+    if let Some(tx) = &*chan {
+        tx.send(payload);
+    }
+
+    if let Some(jrx) = &*rechan {
+        if let Ok(msg) = jrx.recv() {
+            return Ok(msg.to_string());
+        }
+    }
+
+    Ok("Failure".to_string())
 }
+
+
