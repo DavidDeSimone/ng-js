@@ -22,6 +22,8 @@ use std::sync::mpsc;
 
 use emacs::{defun, Env, Result, Value};
 
+const PRELIM_JS: &str = include_str!("js/prelim.js");
+
 emacs::plugin_is_GPL_compatible!();
 
 lazy_static! {
@@ -32,6 +34,22 @@ lazy_static! {
     static ref JS_TO_LISP: std::sync::Mutex<Option<std::sync::mpsc::Receiver<String>>> = {
         std::sync::Mutex::new(None)
     };
+}
+
+macro_rules! bind_global_fn {
+    ($scope:expr, $global: expr, $fnc:ident) => {{
+        let name = v8::String::new($scope, stringify!($fnc)).unwrap();
+        let func = v8::Function::new($scope, $fnc).unwrap();
+        $global.set($scope, name.into(), func.into());
+    }};
+}
+
+pub fn customfn(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut retval: v8::ReturnValue,
+) {
+
 }
 
 #[emacs::module(name = "ng-js", defun_prefix = "ng-js", mod_in_name = false)]
@@ -63,8 +81,23 @@ fn ng_js(env: &Env) -> Result<()> {
                 )
                 .await?;
                 worker.setup_repl().await?;
-                let mut repl_session = deno::tools::repl::ReplSession::initialize(worker.into_main_worker()).await?;
-                
+
+                let mut main_worker = worker.into_main_worker();
+                {
+                    let runtime = &mut main_worker.js_runtime;
+                    {
+                        let context = runtime.global_context();
+                        let scope = &mut v8::HandleScope::with_context(runtime.v8_isolate(), context);
+                        let context = scope.get_current_context();
+                        let global = context.global(scope);
+
+                        bind_global_fn!(scope, global, customfn);
+                    }
+                }
+
+                let mut repl_session = deno::tools::repl::ReplSession::initialize(main_worker).await?;
+                repl_session.evaluate_line_and_get_output(PRELIM_JS).await?;
+
                 loop {
                     if let Ok(msg) = rx.recv() {
                         let result = repl_session.evaluate_line_and_get_output(&msg).await?;
