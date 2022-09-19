@@ -1,5 +1,9 @@
-(require 'ng-js)
+(defun file-to-string (file)
+  "File to string function"
+  (with-temp-buffer
+    (insert-file-contents file)
+    (buffer-string)))
 
-(print (ng-js-eval "console.log('hello world')"))
-(print (ng-js-eval "var x = 3"))
-(print (ng-js-eval "console.log(x)"))
+(setq test-js-string (file-to-string "tests/test.js"))
+(print (ng-js-eval test-js-string))
+;; (kill-emacs)

@@ -17,6 +17,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use std::thread;
+use std::time::Duration;
 
 use std::sync::mpsc;
 
@@ -34,6 +35,14 @@ lazy_static! {
     static ref JS_TO_LISP: std::sync::Mutex<Option<std::sync::mpsc::Receiver<String>>> = {
         std::sync::Mutex::new(None)
     };
+
+    static ref NATIVE_TO_JS: std::sync::Mutex<Option<std::sync::mpsc::Sender<String>>> = {
+        std::sync::Mutex::new(None)
+    };
+
+    static ref JS_TO_NATIVE: std::sync::Mutex<Option<std::sync::mpsc::Receiver<String>>> = {
+        std::sync::Mutex::new(None)
+    };
 }
 
 macro_rules! bind_global_fn {
@@ -44,19 +53,25 @@ macro_rules! bind_global_fn {
     }};
 }
 
-pub fn customfn(
+pub fn send_to_lisp(
     scope: &mut v8::HandleScope,
     args: v8::FunctionCallbackArguments,
     mut retval: v8::ReturnValue,
 ) {
-
+    // @TODO make this read the string based argument
+    // and send to lisp
+    let mut chan = NATIVE_TO_JS.lock().unwrap();
+    if let Some(tx) = &*chan {
+        tx.send("(print \"ello\")".to_string());
+    }
 }
 
 #[emacs::module(name = "ng-js", defun_prefix = "ng-js", mod_in_name = false)]
 fn ng_js(env: &Env) -> Result<()> {
         let (tx, rx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
         let (jtx, jrx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
-        
+        let (ntx, nrx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
+
         {
             let mut chan = LISP_TO_JS.lock().unwrap();
             *chan = Some(tx.clone());
@@ -65,6 +80,16 @@ fn ng_js(env: &Env) -> Result<()> {
         {
             let mut chan = JS_TO_LISP.lock().unwrap();
             *chan = Some(jrx);
+        }
+
+        {
+            let mut chan = NATIVE_TO_JS.lock().unwrap();
+            *chan = Some(ntx.clone());
+        }
+
+        {
+            let mut chan = JS_TO_NATIVE.lock().unwrap();
+            *chan = Some(nrx);
         }
 
         std::thread::spawn(move || {
@@ -91,7 +116,7 @@ fn ng_js(env: &Env) -> Result<()> {
                         let context = scope.get_current_context();
                         let global = context.global(scope);
 
-                        bind_global_fn!(scope, global, customfn);
+                        bind_global_fn!(scope, global, send_to_lisp);
                     }
                 }
 
@@ -127,6 +152,19 @@ pub fn eval(_: &Env, payload: String) -> Result<String> {
     }
 
     Ok("Failure".to_string())
+}
+
+#[defun]
+pub fn drain(_: &Env) -> Result<String> {
+    let d = Duration::from_millis(10);
+    let rechan = JS_TO_NATIVE.lock().unwrap();
+    if let Some(jrx) = &*rechan {
+        while let Ok(msg) = jrx.recv_timeout(d) {
+            return Ok(msg.to_string())
+        }
+    }
+
+    Ok("".to_string())
 }
 
 
