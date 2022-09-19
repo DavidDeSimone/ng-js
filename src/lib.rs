@@ -4,24 +4,11 @@ extern crate v8 as rusty_v8;
 #[macro_use]
 extern crate lazy_static;
 
-use deno::deno_core::error::AnyError;
-use deno::deno_core::FsModuleLoader;
-use deno::deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno::deno_runtime::deno_web::BlobStore;
 use deno::deno_runtime::permissions::Permissions;
-use deno::deno_runtime::worker::MainWorker;
-use deno::deno_runtime::worker::WorkerOptions;
-use deno::deno_runtime::BootstrapOptions;
-use std::path::Path;
-use std::rc::Rc;
-use std::sync::Arc;
 
-use std::thread;
 use std::time::Duration;
 
-use std::sync::mpsc;
-
-use emacs::{defun, Env, Result, Value};
+use emacs::{defun, Env, Result};
 
 const PRELIM_JS: &str = include_str!("js/prelim.js");
 
@@ -54,20 +41,20 @@ macro_rules! bind_global_fn {
 }
 
 pub fn send_to_lisp(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut retval: v8::ReturnValue,
+    _scope: &mut v8::HandleScope,
+    _args: v8::FunctionCallbackArguments,
+    mut _retval: v8::ReturnValue,
 ) {
     // @TODO make this read the string based argument
     // and send to lisp
-    let mut chan = NATIVE_TO_JS.lock().unwrap();
+    let chan = NATIVE_TO_JS.lock().unwrap();
     if let Some(tx) = &*chan {
         tx.send("(print \"ello\")".to_string());
     }
 }
 
 #[emacs::module(name = "ng-js", defun_prefix = "ng-js", mod_in_name = false)]
-fn ng_js(env: &Env) -> Result<()> {
+fn ng_js(_: &Env) -> Result<()> {
         let (tx, rx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
         let (jtx, jrx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
         let (ntx, nrx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
@@ -93,7 +80,7 @@ fn ng_js(env: &Env) -> Result<()> {
         }
 
         std::thread::spawn(move || {
-            let result: Result<_> = deno::deno_runtime::tokio_util::run_local(async move {
+            let result: Result<()> = deno::deno_runtime::tokio_util::run_local(async move {
                 let flags = deno::args::flags_from_vec(vec!["deno".to_owned()])?;
                 let main_module = deno::deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
                 let ps = deno::proc_state::ProcState::build(flags).await?; 
@@ -131,7 +118,6 @@ fn ng_js(env: &Env) -> Result<()> {
                         println!("ERROR");
                     }
                 }
-                Ok(())   
             });
         });
     Ok(())
