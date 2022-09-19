@@ -1,3 +1,3 @@
-console.log('Hello js');
+// console.log('Hello js');
 console.log("line #2");
-await lisp.fnc();
+lisp['buffer-menu']();

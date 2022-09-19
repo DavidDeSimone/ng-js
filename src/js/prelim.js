@@ -1,21 +1,21 @@
-console.log("This is the prelim test...");
 (function () {
     const global = (1,eval)('this');
     const lispFunctionQueue = [];
     let fileMarker = null;
 
     global.ngjsSetFileMarker = (s) => { fileMarker = s; };
+    global.ngjsCallback = (idx) => { lispFunctionQueue[idx](); lispFunctionQueue[idx] = null; };
 
     global.lisp = new Proxy({}, {
         get: function(o, k) {
             return function () {
-                // const args = JSON.stringify(arguments); 
                 return new Promise((resolve, reject) => {
-                    console.log("Sending.... " + fileMarker);
-                    global.send_to_lisp();
+                    lispFunctionQueue.push(resolve);
+                    const idx = lispFunctionQueue.length - 1;
+
+                    global.send_to_lisp(`(ng-js-eval "callback(${idx})")`);
                     const cmd = ['touch', fileMarker];
-                    Deno.run({ cmd }).status()
-                    .then(() => resolve());
+                    Deno.run({ cmd }).status();
                 });
             };
         }

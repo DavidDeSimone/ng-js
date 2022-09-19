@@ -41,15 +41,18 @@ macro_rules! bind_global_fn {
 }
 
 pub fn send_to_lisp(
-    _scope: &mut v8::HandleScope,
-    _args: v8::FunctionCallbackArguments,
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
     mut _retval: v8::ReturnValue,
 ) {
-    // @TODO make this read the string based argument
-    // and send to lisp
-    let chan = NATIVE_TO_JS.lock().unwrap();
-    if let Some(tx) = &*chan {
-        tx.send("(print \"ello\")".to_string());
+    let firstArg = args.get(0);
+    if firstArg.is_string() {
+        let rust_string = args.get(0).to_string(scope).unwrap().to_rust_string_lossy(scope);
+        let chan = NATIVE_TO_JS.lock().unwrap();
+
+        if let Some(tx) = &*chan {
+            tx.send(rust_string);
+        }
     }
 }
 
