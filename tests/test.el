@@ -6,4 +6,8 @@
 
 (setq test-js-string (file-to-string "tests/test.js"))
 (print (ng-js-eval test-js-string))
-;; (kill-emacs)
+
+;; @TODO there may be a better way to do this.
+(defun timer-kill ()
+ (kill-emacs))
+(run-with-timer 5 nil 'timer-kill)

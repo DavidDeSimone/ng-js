@@ -11,8 +11,15 @@ use std::time::Duration;
 use emacs::{defun, Env, Result};
 
 const PRELIM_JS: &str = include_str!("js/prelim.js");
+const ENCHANED_LOGGING: bool = true;
 
 emacs::plugin_is_GPL_compatible!();
+
+macro_rules! log {
+    ($string:expr) => { if (ENCHANED_LOGGING) { println!($string); }};
+
+    ($string:expr, $( $arg:expr ),*) => { if (ENCHANED_LOGGING) { println!($string, $ ( $arg ),*); }};
+}
 
 lazy_static! {
     static ref LISP_TO_JS: std::sync::Mutex<Option<std::sync::mpsc::Sender<String>>> = {
@@ -45,13 +52,13 @@ pub fn send_to_lisp(
     args: v8::FunctionCallbackArguments,
     mut _retval: v8::ReturnValue,
 ) {
-    let firstArg = args.get(0);
-    if firstArg.is_string() {
+    let first_arg = args.get(0);
+    if first_arg.is_string() {
         let rust_string = args.get(0).to_string(scope).unwrap().to_rust_string_lossy(scope);
         let chan = NATIVE_TO_JS.lock().unwrap();
 
         if let Some(tx) = &*chan {
-            tx.send(rust_string);
+            tx.send(rust_string).expect("Failure to Sent");
         }
     }
 }
@@ -114,14 +121,17 @@ fn ng_js(_: &Env) -> Result<()> {
                 repl_session.evaluate_line_and_get_output(PRELIM_JS).await?;
 
                 loop {
-                    if let Ok(msg) = rx.recv() {
-                        let result = repl_session.evaluate_line_and_get_output(&msg).await?;
-                        jtx.send(result.to_string());
-                    } else {
-                        println!("ERROR");
-                    }
+                    let msg = rx.recv()?;
+                    log!("Logging {}", msg);
+                    let result = repl_session.evaluate_line_and_get_output(&msg).await?;
+                    log!("Result {}", result);
+                    jtx.send(result.to_string())?;
                 }
             });
+
+            if let Err(e) = result {
+                println!("Error: {}", e);
+            }
         });
     Ok(())
 }
@@ -131,7 +141,7 @@ pub fn eval(_: &Env, payload: String) -> Result<String> {
     let chan = LISP_TO_JS.lock().unwrap();
     let rechan = JS_TO_LISP.lock().unwrap();
     if let Some(tx) = &*chan {
-        tx.send(payload);
+        tx.send(payload)?;
     }
 
     if let Some(jrx) = &*rechan {
@@ -140,7 +150,7 @@ pub fn eval(_: &Env, payload: String) -> Result<String> {
         }
     }
 
-    Ok("Failure".to_string())
+    Ok("".to_string())
 }
 
 #[defun]
@@ -155,5 +165,3 @@ pub fn drain(_: &Env) -> Result<String> {
 
     Ok("".to_string())
 }
-
-

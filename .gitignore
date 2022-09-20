@@ -1,2 +1,5 @@
 /target
 /Cargo.lock
+logfile.txt
+test.db
+test.log
