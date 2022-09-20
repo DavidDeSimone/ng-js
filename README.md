@@ -58,8 +58,6 @@ lisp.bufferMenu()
 
 This can be combined with JS async/await. 
 
-NOTE: Do NOT use top level await in version 0.1 of ng-js. This will cause emacs to lock. await in general works, however top level await is still a work in progress. 
-
 Under the hood, the JavaScript/TypeScript engine is still [deno](deno.land). You can run deno modules. A simple example is using sqlite in emacs:
 
 ```js

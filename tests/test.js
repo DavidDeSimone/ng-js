@@ -8,12 +8,7 @@ db.execute(`
   )
 `);
 
-// console.log('Hello js');
-console.log("line #3");
-lisp.bufferMenu()
-.then((result) => console.log("Follow on... " + result))
-.then(async () => {
-    await lisp.getBufferCreate("newBuffer");
-    await lisp.switchToBuffer("newBuffer");
-    await lisp.setBuffer("newBuffer");
-});
+await lisp.bufferMenu();
+await lisp.getBufferCreate("newBuffer");
+await lisp.switchToBuffer("newBuffer");
+await lisp.setBuffer("newBuffer");

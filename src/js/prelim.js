@@ -20,7 +20,7 @@
     global.lisp = new Proxy({}, {
         get: function(o, k) {
             return function () {
-                return new Promise((resolve, reject) => {
+                return Promise.resolve().then(new Promise((resolve, reject) => {
                     const process = (funcName, args) => {
                         if (funcName == 'eval') {
                             return `eval ${args[0]}`;
@@ -55,7 +55,7 @@
                             ))`);
                     const cmd = ['touch', fileMarker];
                     Deno.run({ cmd }).status();
-                });
+                }));
             };
         }
     });
