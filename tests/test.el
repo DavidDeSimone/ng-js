@@ -7,6 +7,9 @@
 (setq test-js-string (file-to-string "tests/test.js"))
 (print (ng-js-eval test-js-string))
 
+(ng-js-eval-nonblocking "await lisp.getBufferCreate('otherBuffer');")
+(ng-js-eval-nonblocking "1 + 3")
+
 ;; @TODO there may be a better way to do this.
 (defun timer-kill ()
  (kill-emacs))

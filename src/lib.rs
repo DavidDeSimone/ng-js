@@ -11,7 +11,12 @@ use std::time::Duration;
 use emacs::{defun, Env, Result};
 
 const PRELIM_JS: &str = include_str!("js/prelim.js");
+
+#[cfg(feature = "ench_logging")]
 const ENCHANED_LOGGING: bool = true;
+
+#[cfg(not(feature = "ench_logging"))]
+const ENCHANED_LOGGING: bool = false; 
 
 emacs::plugin_is_GPL_compatible!();
 
@@ -151,6 +156,16 @@ pub fn eval(_: &Env, payload: String) -> Result<String> {
     }
 
     Ok("".to_string())
+}
+
+#[defun]
+pub fn eval_nonblocking(_: &Env, payload: String) -> Result<bool> {
+    let chan = LISP_TO_JS.lock().unwrap();
+    if let Some(tx) = &*chan {
+        tx.send(payload)?;
+    }
+
+    Ok(true)
 }
 
 #[defun]
